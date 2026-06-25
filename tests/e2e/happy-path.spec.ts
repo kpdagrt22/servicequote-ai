@@ -29,9 +29,10 @@ test.describe("Marketing & funnel", () => {
 
   test("pricing page lists the plans and setup service", async ({ page }) => {
     await page.goto("/pricing");
-    await expect(page.getByRole("heading", { name: "Starter" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Pro" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Team" })).toBeVisible();
+    // exact:true — otherwise "Pro" substring-matches the footer "Product" heading.
+    await expect(page.getByRole("heading", { name: "Starter", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pro", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
     await expect(page.getByText("Done-for-you setup")).toBeVisible();
   });
 });
