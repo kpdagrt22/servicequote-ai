@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import type { QuoteStatus } from "@/lib/constants";
-import { QUOTE_STATUS_LABELS } from "@/lib/constants";
+import type { QuoteStatus, QuoteStatusBadgeVariant } from "@/lib/constants";
+import { getQuoteStatusLabel, getQuoteStatusBadgeVariant } from "@/lib/constants";
 
 export function PageHeader({
   title,
@@ -46,17 +46,19 @@ export function EmptyState({
   );
 }
 
-const STATUS_STYLES: Record<QuoteStatus, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  sent: "bg-blue-100 text-blue-700",
-  accepted: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
+const VARIANT_STYLES: Record<QuoteStatusBadgeVariant, string> = {
+  gray: "bg-gray-100 text-gray-700",
+  amber: "bg-amber-100 text-amber-800",
+  blue: "bg-blue-100 text-blue-700",
+  green: "bg-green-100 text-green-700",
+  red: "bg-red-100 text-red-700",
+  slate: "bg-slate-200 text-slate-600",
 };
 
 export function StatusBadge({ status }: { status: QuoteStatus }) {
   return (
-    <span className={cn("badge", STATUS_STYLES[status] ?? "bg-gray-100 text-gray-700")}>
-      {QUOTE_STATUS_LABELS[status] ?? status}
+    <span className={cn("badge", VARIANT_STYLES[getQuoteStatusBadgeVariant(status)])}>
+      {getQuoteStatusLabel(status)}
     </span>
   );
 }

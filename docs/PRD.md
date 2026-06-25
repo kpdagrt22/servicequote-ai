@@ -90,3 +90,19 @@ Data is org-scoped. Calculation + AI-schema tests pass. Docs are complete.
 - **AI reliability** → strict Zod schema + automatic mock fallback.
 - **Adoption** → validation-first rollout (see `VALIDATION_PLAN.md`): manual
   onboarding, proof of payment before scaling.
+
+---
+
+## Alpha hardening update (2026-06)
+
+Scope additions for validation readiness (no CRM/scheduling/accounting/mobile creep):
+
+- **Quote lifecycle** expanded to `draft → ready → sent → accepted | rejected`, plus `archived` (hide) and reopen/restore edges. Transitions are explicit and validated (`src/lib/quotes/status.ts`).
+- **Duplicate quote** — re-quote a similar job (`duplicateQuote` action); copy starts as a fresh draft with a new number.
+- **Proposal** gains job location, a dedicated unit column, an acceptance/signature block, and a fuller estimate disclaimer.
+- **Demo mode** — one-click **Seed demo data** (customer + price book + generated quote) for founder demos; `docs/DEMO_SCRIPT.md`.
+- **AI guardrails** — extraction now also returns `cannot_price_items` and `missing_information`; the prompt forbids guaranteed-pricing/legal/permit/code-compliance certainty and unsafe advice. Mock remains default and key-free.
+- **Security** — org-ownership checks centralized in `src/lib/auth/organizations.ts`.
+- **Deployment** — `src/lib/env.ts` + `npm run verify:env`; `docs/SUPABASE_SETUP.md`.
+
+Unchanged guardrails: every AI quote stays editable, nothing auto-sends, no guaranteed pricing.

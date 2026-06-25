@@ -35,7 +35,14 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const eventList = (events ?? []) as QuoteEvent[];
   const aiEvent = eventList.find((e) => e.event_type === "ai_generated");
   const aiInsights = (aiEvent?.metadata ?? null) as
-    | { confidence?: number; used_fallback?: boolean; risk_flags?: string[]; questions?: string[] }
+    | {
+        confidence?: number;
+        used_fallback?: boolean;
+        risk_flags?: string[];
+        questions?: string[];
+        cannot_price_items?: string[];
+        missing_information?: string[];
+      }
     | null;
 
   return (

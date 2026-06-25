@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireOrg } from "@/lib/org";
 import { priceBookItemSchema } from "@/lib/validation/price-book";
 import { EXAMPLE_PRICE_BOOK } from "@/lib/price-book/examples";
+import { trackEvent } from "@/lib/observability/events";
 import type { Trade } from "@/lib/constants";
 
 export interface ActionResult {
@@ -28,6 +29,7 @@ export async function createPriceBookItem(values: unknown): Promise<ActionResult
     ...parsed.data,
   });
   if (error) return { ok: false, error: error.message };
+  trackEvent("price_book_item_created", { source: "manual" });
   revalidatePath("/price-book");
   return { ok: true };
 }

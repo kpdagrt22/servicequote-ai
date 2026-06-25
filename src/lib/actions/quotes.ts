@@ -1,7 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireOrg, type OrgContext } from "@/lib/org";
+import { type OrgContext } from "@/lib/org";
+import {
+  requireOrganizationMember,
+  requireOrganizationEditor,
+  assertCustomerBelongsToOrg,
+  assertQuoteBelongsToOrg,
+} from "@/lib/auth/organizations";
 import { extractQuote } from "@/lib/ai/service";
 import type { PriceBookItem } from "@/lib/types/db";
 import type { PriceBookRef } from "@/lib/ai/schemas/quote-extraction";
@@ -14,7 +20,8 @@ import {
   quoteSaveSchema,
   quoteStatusSchema,
 } from "@/lib/validation/quote";
-import { QUOTE_STATUS_TRANSITIONS, type QuoteStatus } from "@/lib/constants";
+import { canTransitionQuoteStatus, isQuoteEditable, type QuoteStatus } from "@/lib/constants";
+import { trackEvent } from "@/lib/observability/events";
 
 export interface QuoteActionResult {
   ok: boolean;
@@ -23,9 +30,7 @@ export interface QuoteActionResult {
 }
 
 async function ensureEditor(): Promise<OrgContext> {
-  const ctx = await requireOrg();
-  if (!ctx.isEditor) throw new Error("You don't have permission to manage quotes.");
-  return ctx;
+  return requireOrganizationEditor();
 }
 
 /**
@@ -43,14 +48,8 @@ export async function generateDraftQuote(input: unknown): Promise<QuoteActionRes
   // Defense in depth: a provided customer id must belong to THIS org, so a quote
   // can never reference another organization's customer (RLS blocks reads, but
   // the FK would otherwise still accept a foreign id).
-  if (customerId) {
-    const { data: ownCustomer } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("id", customerId)
-      .eq("organization_id", organization.id)
-      .maybeSingle();
-    if (!ownCustomer) return { ok: false, error: "Customer not found." };
+  if (customerId && !(await assertCustomerBelongsToOrg(supabase, customerId, organization.id))) {
+    return { ok: false, error: "Customer not found." };
   }
   if (!customerId && v.newCustomer?.name) {
     const { data: cust, error: custErr } = await supabase
@@ -210,9 +209,18 @@ export async function generateDraftQuote(input: unknown): Promise<QuoteActionRes
         used_fallback: result.usedFallback,
         risk_flags: extraction.risk_flags,
         questions: extraction.questions_for_contractor,
+        cannot_price_items: extraction.cannot_price_items,
+        missing_information: extraction.missing_information,
       },
     },
   ]);
+
+  trackEvent("quote_created", { quote_id: quoteId, source: "ai_flow" });
+  trackEvent("ai_quote_generated", {
+    provider: result.provider,
+    confidence: extraction.confidence,
+    used_fallback: result.usedFallback,
+  });
 
   revalidatePath("/quotes");
   revalidatePath("/dashboard");
@@ -238,6 +246,13 @@ export async function saveQuoteDraft(quoteId: string, input: unknown): Promise<Q
     .eq("organization_id", organization.id)
     .maybeSingle();
   if (!existing) return { ok: false, error: "Quote not found." };
+
+  // Enforce draft-only editing server-side — the client UI flag is not enough,
+  // since this action can be called directly. Only drafts can have their line
+  // items/content replaced; reopen a sent/accepted quote to draft first.
+  if (!isQuoteEditable(existing.status as QuoteStatus)) {
+    return { ok: false, error: "Only draft quotes can be edited. Reopen the quote to draft first." };
+  }
 
   const rows = v.line_items.map((li, idx) => {
     const unitPrice = round2(li.unit_price);
@@ -319,7 +334,7 @@ export async function updateQuoteStatus(quoteId: string, status: unknown): Promi
   if (!existing) return { ok: false, error: "Quote not found." };
 
   const current = existing.status as QuoteStatus;
-  if (current !== next && !QUOTE_STATUS_TRANSITIONS[current]?.includes(next)) {
+  if (current !== next && !canTransitionQuoteStatus(current, next)) {
     return { ok: false, error: `Can't move a ${current} quote to ${next}.` };
   }
 
@@ -336,6 +351,7 @@ export async function updateQuoteStatus(quoteId: string, status: unknown): Promi
     event_type: "status_changed",
     metadata: { from: current, to: next },
   });
+  trackEvent("quote_status_changed", { quote_id: quoteId, from: current, to: next });
 
   revalidatePath(`/quotes/${quoteId}`);
   revalidatePath("/quotes");
@@ -344,16 +360,12 @@ export async function updateQuoteStatus(quoteId: string, status: unknown): Promi
 }
 
 export async function recordQuoteEvent(quoteId: string, eventType: string, metadata?: Record<string, unknown>) {
-  const { supabase, organization } = await requireOrg();
+  const { supabase, organization } = await requireOrganizationMember();
   // Only record events for quotes that belong to this org, so an event row can
   // never pair our organization_id with another org's quote_id.
-  const { data: ownQuote } = await supabase
-    .from("quotes")
-    .select("id")
-    .eq("id", quoteId)
-    .eq("organization_id", organization.id)
-    .maybeSingle();
-  if (!ownQuote) return { ok: false, error: "Quote not found." };
+  if (!(await assertQuoteBelongsToOrg(supabase, quoteId, organization.id))) {
+    return { ok: false, error: "Quote not found." };
+  }
 
   await supabase.from("quote_events").insert({
     organization_id: organization.id,
@@ -362,6 +374,92 @@ export async function recordQuoteEvent(quoteId: string, eventType: string, metad
     metadata: metadata ?? null,
   });
   return { ok: true };
+}
+
+/**
+ * Duplicate an existing quote within the SAME organization. The copy starts as a
+ * fresh DRAFT with a new quote number; all line items are copied; the customer
+ * is kept (editable later). Useful when a contractor re-quotes a similar job.
+ */
+export async function duplicateQuote(quoteId: string): Promise<QuoteActionResult> {
+  const { supabase, organization } = await ensureEditor();
+
+  // Load the source quote (org-scoped) and its line items.
+  const { data: src } = await supabase
+    .from("quotes")
+    .select("*")
+    .eq("id", quoteId)
+    .eq("organization_id", organization.id)
+    .maybeSingle();
+  if (!src) return { ok: false, error: "Quote not found." };
+
+  const { data: srcLines } = await supabase
+    .from("quote_line_items")
+    .select("*")
+    .eq("quote_id", quoteId)
+    .order("sort_order", { ascending: true });
+
+  const { data: numData } = await supabase.rpc("next_quote_number", { org: organization.id });
+  const quoteNumber = (numData as string | null) ?? null;
+
+  const { data: copy, error: insErr } = await supabase
+    .from("quotes")
+    .insert({
+      organization_id: organization.id,
+      customer_id: src.customer_id,
+      quote_request_id: null,
+      quote_number: quoteNumber,
+      title: src.title ? `${src.title} (copy)` : "Quote (copy)",
+      scope_summary: src.scope_summary,
+      assumptions: src.assumptions,
+      exclusions: src.exclusions,
+      status: "draft",
+      subtotal: src.subtotal,
+      tax_percent: src.tax_percent,
+      tax_amount: src.tax_amount,
+      total: src.total,
+      currency: src.currency,
+      valid_until: addDaysIso(30),
+    })
+    .select("id")
+    .single();
+  if (insErr) return { ok: false, error: insErr.message };
+  const newId = copy.id as string;
+
+  const lines = (srcLines ?? []) as Array<Record<string, unknown>>;
+  if (lines.length > 0) {
+    const rows = lines.map((l, idx) => ({
+      quote_id: newId,
+      price_book_item_id: l.price_book_item_id ?? null,
+      sort_order: idx,
+      category: l.category ?? null,
+      name: l.name,
+      description: l.description ?? null,
+      quantity: l.quantity ?? 1,
+      unit: l.unit ?? null,
+      material_cost: l.material_cost ?? 0,
+      labor_minutes: l.labor_minutes ?? 0,
+      labor_rate: l.labor_rate ?? 0,
+      markup_percent: l.markup_percent ?? 0,
+      unit_price: l.unit_price ?? 0,
+      total_price: l.total_price ?? 0,
+      ai_generated: l.ai_generated ?? false,
+      confidence: l.confidence ?? null,
+    }));
+    const { error: liErr } = await supabase.from("quote_line_items").insert(rows);
+    if (liErr) return { ok: false, error: liErr.message };
+  }
+
+  await supabase.from("quote_events").insert({
+    organization_id: organization.id,
+    quote_id: newId,
+    event_type: "quote_duplicated",
+    metadata: { from_quote_id: quoteId, from_quote_number: src.quote_number ?? null },
+  });
+
+  revalidatePath("/quotes");
+  revalidatePath("/dashboard");
+  return { ok: true, quoteId: newId };
 }
 
 export async function deleteQuote(quoteId: string): Promise<QuoteActionResult> {

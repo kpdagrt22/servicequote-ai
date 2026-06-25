@@ -96,3 +96,22 @@ quotes 1─* quote_line_items *─0..1 price_book_items
 quotes 1─* quote_events
 organizations 1─1 subscriptions
 ```
+
+---
+
+## Alpha hardening update (2026-06)
+
+- **Migration `0004_quote_status_lifecycle.sql`** widens the `quotes.status` CHECK
+  constraint to `('draft','ready','sent','accepted','rejected','archived')`. Run it
+  after `0001`–`0003`. It drops `quotes_status_check` (if present) and re-adds it
+  named. Idempotent / safe to re-run.
+- **Status transition rules** are enforced in the application
+  (`src/lib/quotes/status.ts` + `updateQuoteStatus`), not the database — the CHECK
+  constraint only bounds the legal value set. Allowed: `draft→ready→sent→accepted|rejected`,
+  any active → `archived`, and reopen/restore → `draft`. Forbidden: `accepted→draft`,
+  `rejected→accepted`, `archived→accepted`.
+- **`quote_events.event_type`** is free text (no CHECK); the app now also writes
+  `proposal_generated`, `pdf_downloaded`, and `quote_duplicated` in addition to the
+  original types. RLS unchanged: members read, editors insert.
+- **Ownership** is enforced by RLS plus app-level helpers in
+  `src/lib/auth/organizations.ts` (defense in depth). No new tables were added.

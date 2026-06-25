@@ -98,31 +98,38 @@ The SQL lives in [`supabase/migrations`](supabase/migrations). Run the files
 1. `0001_init.sql` — tables, triggers, helper functions
 2. `0002_rls.sql` — Row Level Security policies
 3. `0003_storage.sql` — `logos` + `proposals` storage buckets
+4. `0004_quote_status_lifecycle.sql` — widens quote statuses to `ready`/`archived`
 
 **Option B — psql / Supabase CLI:**
 
 ```bash
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_init.sql
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0002_rls.sql
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0003_storage.sql
+for f in supabase/migrations/0001_init.sql supabase/migrations/0002_rls.sql \
+         supabase/migrations/0003_storage.sql supabase/migrations/0004_quote_status_lifecycle.sql; do
+  psql "$SUPABASE_DB_URL" -f "$f"
+done
 ```
 
-`npm run db:migrate` prints a reminder of these steps.
+`npm run db:migrate` prints a reminder. Full walkthrough:
+[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md). Schema + RLS:
+[`docs/DATABASE.md`](docs/DATABASE.md).
 
-See [`docs/DATABASE.md`](docs/DATABASE.md) for the schema and RLS model.
+Run `npm run verify:env` anytime to see which integrations are configured.
 
 ---
 
-## Seeding demo data
+## Demo mode
 
-Two ways to get example electrical/HVAC price book items:
+Validate without real customers:
 
-- **In-app (recommended):** on the **Price book** page, click **“Load example
-  items.”** Inserts the trade-appropriate starter items
+- **In-app (fastest):** sign in → dashboard → **Seed demo data**. Creates a demo
+  customer, a starter price book for your trade, and a generated draft quote,
+  then opens it.
+- **Example price book only:** Price book page → **Load example items**
   (`src/lib/price-book/examples.ts`).
-- **SQL:** after creating an account + organization, run
-  [`supabase/seed/demo.sql`](supabase/seed/demo.sql). It seeds any organization
-  that has no price book items. `npm run db:seed` prints the reminder.
+- **SQL:** run [`supabase/seed/demo.sql`](supabase/seed/demo.sql) (seeds any org
+  with an empty price book). `npm run db:seed` / `npm run seed:demo` print reminders.
+
+Run the founder demo with [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
 
 ---
 

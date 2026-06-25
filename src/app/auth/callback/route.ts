@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safeInternalPath } from "@/lib/utils";
 
 /**
  * Handles the email-confirmation / OAuth redirect. Exchanges the `code` for a
@@ -8,7 +9,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") || "/onboarding";
+  // Validate the redirect target so a crafted ?next= can't be abused.
+  const next = safeInternalPath(searchParams.get("next"), "/onboarding");
 
   if (code) {
     const supabase = createSupabaseServerClient();

@@ -42,6 +42,10 @@ export const quoteExtractionSchema = z.object({
   risk_flags: z.array(z.string()).default([]),
   /** Clarifying questions to ask the customer before committing. */
   questions_for_contractor: z.array(z.string()).default([]),
+  /** Work the AI identified but could NOT confidently price — contractor must price these. */
+  cannot_price_items: z.array(z.string()).default([]),
+  /** Details the AI needs to produce a better estimate (measurements, access, etc.). */
+  missing_information: z.array(z.string()).default([]),
   /** Overall confidence in the extraction (0-1). */
   confidence: z.number().min(0).max(1).default(0.5),
 });

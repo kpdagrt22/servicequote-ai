@@ -127,3 +127,28 @@ persist totals, so the preview always matches what's saved.
 3. The providers currently use plain JSON-mode `fetch`. For production hardening,
    swap to the official SDK with tool/function calling for stricter structured
    output — the Zod schema stays the same.
+
+---
+
+## Alpha hardening update (2026-06)
+
+The extraction schema (`src/lib/ai/schemas/quote-extraction.ts`) gained two fields,
+both defaulting to `[]`:
+
+- **`cannot_price_items: string[]`** — work the AI identified but would NOT price; the
+  contractor sets these. The mock populates it for items with no inferable cost.
+- **`missing_information: string[]`** — details needed for a tighter estimate
+  (measurements, photos, panel capacity, access).
+
+These surface in the quote's **AI insights** panel alongside `risk_flags`,
+`questions_for_contractor`, and a **low-confidence warning** (when confidence < 0.5).
+
+The system prompt (`src/lib/ai/prompt.ts`) now adds explicit safety rules: never use
+guaranteed-pricing language, never make legal claims or assign fault, never state
+permits are definitely required/not required (flag them instead), never assert code
+compliance with certainty, and never give unsafe electrical/HVAC instructions.
+
+Failure handling is unchanged and still safe: malformed provider output fails Zod
+validation and `extractQuote` falls back to the deterministic mock; the user-facing
+fallback string is `AI_FALLBACK_MESSAGE`. Mock remains the default and requires no
+API key; tests never hit the network.
