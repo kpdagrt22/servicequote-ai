@@ -1,0 +1,39 @@
+{
+  "name": "servicequote-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ServiceQuote AI — turn job notes into editable line-item estimates and branded proposals for US service contractors.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:migrate": "echo 'Run the SQL files in supabase/migrations against your Supabase project in order. See README.md.'",
+    "db:seed": "echo 'Run supabase/seed/demo.sql against your project (after migrations). See README.md.'"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.9.1",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.46.1",
+    "next": "14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.53.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^20.17.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
