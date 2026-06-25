@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Quote, QuoteLineItem, Customer, PriceBookItem } from "@/lib/types/db";
 import {
@@ -16,7 +16,8 @@ import { formatCurrency } from "@/lib/format";
 import { toNumber, round2 } from "@/lib/utils";
 import { computeUnitPrice, computeLineTotal, computeQuoteTotals } from "@/lib/quotes/calculations";
 import { StatusBadge } from "@/components/app/ui";
-import { saveQuoteDraft, updateQuoteStatus, recordQuoteEvent, duplicateQuote } from "@/lib/actions/quotes";
+import { canShareQuote } from "@/lib/quotes/sharing";
+import { saveQuoteDraft, updateQuoteStatus, recordQuoteEvent, duplicateQuote, sendQuote } from "@/lib/actions/quotes";
 
 interface LineDraft {
   key: string;
@@ -121,6 +122,17 @@ export function QuoteWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(quote.share_token ?? null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [sendNote, setSendNote] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // Build the absolute share URL on the client to avoid SSR/runtime URL drift.
+  useEffect(() => {
+    if (shareToken && typeof window !== "undefined") {
+      setShareUrl(`${window.location.origin}/p/${shareToken}`);
+    }
+  }, [shareToken]);
 
   const editable = canEdit && isQuoteEditable(status);
 
@@ -294,6 +306,37 @@ export function QuoteWorkspace({
       }
       router.push(`/quotes/${res.quoteId}`);
       router.refresh();
+    });
+  }
+
+  function send(withEmail: boolean) {
+    setError(null);
+    setSendNote(null);
+    startTransition(async () => {
+      const res = await sendQuote(quote.id, { email: withEmail });
+      if (!res.ok) {
+        setError(res.error ?? "Could not send the quote.");
+        return;
+      }
+      if (status === "ready") setStatus("sent");
+      if (res.shareUrl) {
+        setShareUrl(res.shareUrl);
+        const m = res.shareUrl.match(/\/p\/([^/?#]+)/);
+        if (m) setShareToken(m[1]);
+      }
+      if (res.emailed) setSendNote("Emailed to the customer ✓");
+      else if (res.emailNote) setSendNote(res.emailNote);
+      else setSendNote("Share link ready — copy it below.");
+      router.refresh();
+    });
+  }
+
+  function copyShareLink() {
+    if (!shareUrl) return;
+    navigator.clipboard?.writeText(shareUrl).then(() => {
+      setLinkCopied(true);
+      recordQuoteEvent(quote.id, "customer_message_copied");
+      setTimeout(() => setLinkCopied(false), 2000);
     });
   }
 
@@ -499,6 +542,46 @@ export function QuoteWorkspace({
           </button>
           <p className="mt-2 text-xs text-gray-400">Opens a print-ready proposal. Use “Save as PDF” in the print dialog.</p>
         </div>
+
+        {/* Send to customer */}
+        {canEdit && (
+          <div className="card p-5">
+            <h2 className="text-base font-semibold text-gray-900">Send to customer</h2>
+            {canShareQuote(status) ? (
+              <>
+                <p className="mt-1 text-sm text-gray-500">
+                  Share a read-only proposal the customer can review and accept online.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    className="btn-primary w-full justify-center"
+                    onClick={() => send(Boolean(customer?.email))}
+                    disabled={pending}
+                  >
+                    {pending
+                      ? "Sending…"
+                      : customer?.email
+                        ? `Send & email ${customer.email}`
+                        : "Send to customer"}
+                  </button>
+                  {shareUrl && (
+                    <button className="btn-secondary w-full justify-center" onClick={copyShareLink}>
+                      {linkCopied ? "Link copied ✓" : "Copy share link"}
+                    </button>
+                  )}
+                </div>
+                {shareUrl && (
+                  <p className="mt-2 break-all rounded-lg bg-gray-50 p-2 text-xs text-gray-600">{shareUrl}</p>
+                )}
+                {sendNote && <p className="mt-2 text-xs text-brand-700">{sendNote}</p>}
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-gray-500">
+                Mark the quote <strong>ready</strong> first, then you can send it to the customer.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Status */}
         {canEdit && (

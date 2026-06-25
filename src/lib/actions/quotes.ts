@@ -1,6 +1,8 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { type OrgContext } from "@/lib/org";
 import {
   requireOrganizationMember,
@@ -9,12 +11,12 @@ import {
   assertQuoteBelongsToOrg,
 } from "@/lib/auth/organizations";
 import { extractQuote } from "@/lib/ai/service";
-import type { PriceBookItem } from "@/lib/types/db";
+import type { Customer, PriceBookItem } from "@/lib/types/db";
 import type { PriceBookRef } from "@/lib/ai/schemas/quote-extraction";
 import { lineItemFromSuggestion, listToText } from "@/lib/quotes/build";
 import { computeQuoteTotals, computeLineTotal } from "@/lib/quotes/calculations";
 import { round2 } from "@/lib/utils";
-import { addDaysIso } from "@/lib/format";
+import { addDaysIso, formatCurrency } from "@/lib/format";
 import {
   generateQuoteSchema,
   quoteSaveSchema,
@@ -22,15 +24,49 @@ import {
 } from "@/lib/validation/quote";
 import { canTransitionQuoteStatus, isQuoteEditable, type QuoteStatus } from "@/lib/constants";
 import { trackEvent } from "@/lib/observability/events";
+import { getSubscription } from "@/lib/billing/subscription";
+import { canCreateQuote, isPaid } from "@/lib/billing/entitlements";
+import { checkDailyAiQuota, startOfUtcDayIso } from "@/lib/ai/quota";
+import { canShareQuote, buildShareUrl } from "@/lib/quotes/sharing";
+import { sendEmail, isEmailConfigured } from "@/lib/email/resend";
+import { buildProposalEmail } from "@/lib/email/proposal-email";
+import { appUrl } from "@/lib/config";
 
 export interface QuoteActionResult {
   ok: boolean;
   error?: string;
   quoteId?: string;
+  /** Set by sendQuote: the public proposal link the contractor can share. */
+  shareUrl?: string;
+  /** Set by sendQuote: whether a customer email was actually sent. */
+  emailed?: boolean;
+  /** Set by sendQuote when an email was requested but not sent. */
+  emailNote?: string;
 }
 
 async function ensureEditor(): Promise<OrgContext> {
   return requireOrganizationEditor();
+}
+
+/** Count an org's non-archived quotes (used for the free-tier cap). */
+async function countActiveQuotes(supabase: SupabaseClient, organizationId: string): Promise<number> {
+  const { count } = await supabase
+    .from("quotes")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .neq("status", "archived");
+  return count ?? 0;
+}
+
+/** Count an org's AI generations since UTC midnight (used for the daily quota). */
+async function countTodaysAiRuns(supabase: SupabaseClient, organizationId: string): Promise<number> {
+  const since = startOfUtcDayIso(new Date());
+  const { count } = await supabase
+    .from("ai_extraction_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .gte("created_at", since);
+  return count ?? 0;
 }
 
 /**
@@ -42,6 +78,21 @@ export async function generateDraftQuote(input: unknown): Promise<QuoteActionRes
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message };
   const v = parsed.data;
   const { supabase, organization } = await ensureEditor();
+
+  // Entitlement: cap quote count on the free tier.
+  const subscription = await getSubscription(supabase, organization.id);
+  const quoteCount = await countActiveQuotes(supabase, organization.id);
+  const entitlement = canCreateQuote(subscription, quoteCount);
+  if (!entitlement.allowed) {
+    return { ok: false, error: entitlement.reason ?? "Quote limit reached." };
+  }
+
+  // Abuse guard: cap AI generations per org per day (protects real provider cost).
+  const aiUsedToday = await countTodaysAiRuns(supabase, organization.id);
+  const quota = checkDailyAiQuota(aiUsedToday, isPaid(subscription));
+  if (!quota.allowed) {
+    return { ok: false, error: quota.reason ?? "Daily AI limit reached." };
+  }
 
   // Resolve / create the customer.
   let customerId = v.customerId ?? null;
@@ -384,6 +435,14 @@ export async function recordQuoteEvent(quoteId: string, eventType: string, metad
 export async function duplicateQuote(quoteId: string): Promise<QuoteActionResult> {
   const { supabase, organization } = await ensureEditor();
 
+  // Entitlement: duplicating creates a new quote, so it counts against the cap.
+  const subscription = await getSubscription(supabase, organization.id);
+  const quoteCount = await countActiveQuotes(supabase, organization.id);
+  const entitlement = canCreateQuote(subscription, quoteCount);
+  if (!entitlement.allowed) {
+    return { ok: false, error: entitlement.reason ?? "Quote limit reached." };
+  }
+
   // Load the source quote (org-scoped) and its line items.
   const { data: src } = await supabase
     .from("quotes")
@@ -460,6 +519,103 @@ export async function duplicateQuote(quoteId: string): Promise<QuoteActionResult
   revalidatePath("/quotes");
   revalidatePath("/dashboard");
   return { ok: true, quoteId: newId };
+}
+
+/**
+ * Send a quote to the customer: mint an unguessable share token (if absent),
+ * move a `ready` quote to `sent`, and optionally email the customer a link to
+ * the read-only branded proposal at /p/<token>. The contractor always gets the
+ * shareable link back so they can send it themselves even without email set up.
+ *
+ * This is contractor-initiated (never automatic) and never finalises anything —
+ * the customer accepts/declines on the public page.
+ */
+export async function sendQuote(
+  quoteId: string,
+  opts?: { email?: boolean }
+): Promise<QuoteActionResult> {
+  const { supabase, organization } = await ensureEditor();
+
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select("id, status, share_token, customer_id, quote_number, title, total, currency")
+    .eq("id", quoteId)
+    .eq("organization_id", organization.id)
+    .maybeSingle();
+  if (!quote) return { ok: false, error: "Quote not found." };
+
+  const status = quote.status as QuoteStatus;
+  if (!canShareQuote(status)) {
+    return { ok: false, error: "Mark the quote as ready before sending it to a customer." };
+  }
+
+  const token = (quote.share_token as string | null) ?? randomUUID();
+  const nowIso = new Date().toISOString();
+
+  // Promote ready -> sent (guarded). Leave sent/accepted/rejected as-is on re-send.
+  const nextStatus: QuoteStatus =
+    status === "ready" && canTransitionQuoteStatus(status, "sent") ? "sent" : status;
+
+  const { error: upErr } = await supabase
+    .from("quotes")
+    .update({ share_token: token, shared_at: nowIso, status: nextStatus })
+    .eq("id", quoteId)
+    .eq("organization_id", organization.id);
+  if (upErr) return { ok: false, error: upErr.message };
+
+  await supabase.from("quote_events").insert({
+    organization_id: organization.id,
+    quote_id: quoteId,
+    event_type: "quote_sent",
+    metadata: { from: status, to: nextStatus },
+  });
+  trackEvent("quote_sent", { quote_id: quoteId, from: status, to: nextStatus });
+
+  const shareUrl = buildShareUrl(appUrl, token);
+
+  // Optional: email the customer the link.
+  let emailed = false;
+  let emailNote: string | undefined;
+  if (opts?.email) {
+    if (!isEmailConfigured()) {
+      emailNote = "Email isn't configured — copy the link to send it yourself.";
+    } else {
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("name, email")
+        .eq("id", quote.customer_id as string)
+        .eq("organization_id", organization.id)
+        .maybeSingle();
+      const cust = customer as Pick<Customer, "name" | "email"> | null;
+      if (!cust?.email) {
+        emailNote = "No customer email on file — copy the link to send it yourself.";
+      } else {
+        const built = buildProposalEmail({
+          customerName: cust.name ?? null,
+          businessName: organization.name,
+          quoteTitle: (quote.title as string | null) ?? null,
+          quoteNumber: (quote.quote_number as string | null) ?? null,
+          totalFormatted: formatCurrency(Number(quote.total), quote.currency as string),
+          shareUrl,
+        });
+        const result = await sendEmail({ to: cust.email, ...built });
+        emailed = result.ok;
+        if (!result.ok) emailNote = result.error ?? "Could not send the email.";
+        await supabase.from("quote_events").insert({
+          organization_id: organization.id,
+          quote_id: quoteId,
+          event_type: "quote_emailed",
+          metadata: { ok: result.ok, error: result.error ?? null },
+        });
+        trackEvent("quote_emailed", { quote_id: quoteId, ok: result.ok });
+      }
+    }
+  }
+
+  revalidatePath(`/quotes/${quoteId}`);
+  revalidatePath("/quotes");
+  revalidatePath("/dashboard");
+  return { ok: true, quoteId, shareUrl, emailed, emailNote };
 }
 
 export async function deleteQuote(quoteId: string): Promise<QuoteActionResult> {

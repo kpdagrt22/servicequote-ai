@@ -89,8 +89,20 @@ export const QUOTE_EVENT_TYPES = [
   "pdf_downloaded",
   "customer_message_copied",
   "quote_duplicated",
+  "quote_sent",
+  "quote_emailed",
+  "proposal_viewed",
+  "customer_accepted",
+  "customer_declined",
+  "invitation_sent",
+  "invitation_accepted",
+  "invitation_revoked",
 ] as const;
 export type QuoteEventType = (typeof QUOTE_EVENT_TYPES)[number];
+
+/** Customer response captured from the public shared proposal page. */
+export const CUSTOMER_RESPONSES = ["accepted", "declined"] as const;
+export type CustomerResponse = (typeof CUSTOMER_RESPONSES)[number];
 
 // ---------------------------------------------------------------------------
 // Price book
@@ -185,6 +197,47 @@ export const SETUP_SERVICE = {
   blurb:
     "One-time concierge onboarding: we build your price book and your first quotes with you.",
 };
+
+// ---------------------------------------------------------------------------
+// Entitlements & usage limits
+//
+// Free (no active paid subscription) organizations can create a limited number
+// of quotes and a small number of AI drafts per day so unconfigured / abandoned
+// accounts can't run up real AI cost. Any active paid plan lifts the quote cap
+// (null = unlimited) and raises the daily AI quota. Enforcement is server-side
+// in src/lib/actions/quotes.ts via the pure helpers in src/lib/billing/
+// entitlements.ts and src/lib/ai/quota.ts.
+// ---------------------------------------------------------------------------
+
+/** Quotes an org may create with no active paid plan. null = unlimited. */
+export const FREE_QUOTE_LIMIT = 5;
+
+/** Per-plan quote caps (null = unlimited). Free tier uses FREE_QUOTE_LIMIT. */
+export const PLAN_QUOTE_LIMITS: Record<PlanId, number | null> = {
+  starter: null,
+  pro: null,
+  team: null,
+};
+
+/** AI draft generations allowed per org per UTC day. */
+export const AI_DAILY_QUOTA = { free: 8, paid: 100 } as const;
+
+/** Subscription statuses that count as an entitled, paying customer. */
+export const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"] as const;
+
+// ---------------------------------------------------------------------------
+// Team invitations
+// ---------------------------------------------------------------------------
+
+/** Roles an existing editor may invite a teammate as (never another owner). */
+export const INVITABLE_ROLES = ["admin", "member"] as const;
+export type InvitableRole = (typeof INVITABLE_ROLES)[number];
+
+export const INVITATION_STATUSES = ["pending", "accepted", "revoked"] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
+/** Pending invitations expire after this many days. */
+export const INVITATION_EXPIRY_DAYS = 14;
 
 // ---------------------------------------------------------------------------
 // Disclaimers
