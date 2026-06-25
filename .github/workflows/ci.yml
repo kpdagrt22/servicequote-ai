@@ -40,3 +40,36 @@ jobs:
         run: npm run test:e2e
         env:
           NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+  # Authenticated money-path E2E against a real (throwaway) Supabase project.
+  # Runs ONLY when the E2E_SUPABASE_URL repository secret is set; otherwise every
+  # step is skipped and the job is a green no-op. Never gates the public `e2e` job.
+  e2e-authed:
+    runs-on: ubuntu-latest
+    needs: verify
+    env:
+      E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      # App + script env (only meaningful when the secret above is present):
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+      E2E_SUPABASE: "1"
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      AI_PROVIDER: mock
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+        if: env.E2E_SUPABASE_URL != ''
+      - uses: actions/setup-node@v4
+        if: env.E2E_SUPABASE_URL != ''
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        if: env.E2E_SUPABASE_URL != ''
+      - run: npx playwright install --with-deps chromium
+        if: env.E2E_SUPABASE_URL != ''
+      - name: Authenticated money-path E2E (provision + run)
+        if: env.E2E_SUPABASE_URL != ''
+        run: npm run test:e2e:authed
