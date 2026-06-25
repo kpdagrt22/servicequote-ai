@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOrg } from "@/lib/org";
 import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/app/ui";
+import { DemoDataButton } from "@/components/app/DemoDataButton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Quote, Customer } from "@/lib/types/db";
 import type { QuoteStatus } from "@/lib/constants";
@@ -9,7 +10,7 @@ import type { QuoteStatus } from "@/lib/constants";
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  const { supabase, organization } = await requireOrg();
+  const { supabase, organization, isEditor } = await requireOrg();
   const currency = organization.default_currency || "USD";
 
   const [{ data: quotesRaw }, { count: priceBookCount }] = await Promise.all([
@@ -47,7 +48,12 @@ export default async function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description={`Welcome back — here's where ${organization.name} stands.`}
-        action={<Link href="/quotes/new" className="btn-primary">New quote</Link>}
+        action={
+          <div className="flex items-center gap-2">
+            {isEditor && <DemoDataButton />}
+            <Link href="/quotes/new" className="btn-primary">New quote</Link>
+          </div>
+        }
       />
 
       {needsPriceBook && (

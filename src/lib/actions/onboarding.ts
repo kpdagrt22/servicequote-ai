@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { organizationOnboardingSchema } from "@/lib/validation/org";
 import { DEFAULT_PROPOSAL_FOOTER } from "@/lib/constants";
+import { trackEvent } from "@/lib/observability/events";
 
 export interface ActionResult {
   ok: boolean;
@@ -64,6 +65,7 @@ export async function createOrganization(values: unknown): Promise<ActionResult>
 
   if (error) return { ok: false, error: error.message };
 
+  trackEvent("onboarding_completed", { trade: v.trade });
   revalidatePath("/dashboard");
   return { ok: true, organizationId: data.id as string };
 }

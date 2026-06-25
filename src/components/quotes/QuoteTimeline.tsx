@@ -6,8 +6,11 @@ const LABELS: Record<string, string> = {
   ai_generated: "AI draft generated",
   edited: "Quote edited",
   status_changed: "Status changed",
-  pdf_generated: "Proposal PDF generated",
+  proposal_generated: "Proposal generated",
+  pdf_generated: "Proposal opened",
+  pdf_downloaded: "Proposal downloaded",
   customer_message_copied: "Customer message copied",
+  quote_duplicated: "Quote duplicated",
 };
 
 function describe(e: QuoteEvent): string {

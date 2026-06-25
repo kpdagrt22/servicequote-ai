@@ -71,3 +71,51 @@ For each quote: **"Is this price accurate enough to send as-is?"**
 - `quote_events` records the full lifecycle (created, ai_generated, edited,
   status changes, message copied) for every quote — your raw validation data.
 - `/admin` shows onboarding status per organization at a glance.
+
+---
+
+## First 10 contractors — exact plan (alpha)
+
+**Target niche.** US **residential electricians and HVAC techs**, solo or 2–5 person
+shops, who quote several jobs a week and currently write estimates by hand or in a
+notes app. Find them in local trade Facebook groups, r/electricians / r/HVAC, supply
+houses, and warm intros.
+
+**Outreach message (DM/email):**
+> "Hey — I built a tool that turns your job notes into an editable, branded quote +
+> PDF in a couple minutes, using YOUR prices. Not a CRM, no accounting setup. Can I
+> show you a 5-minute demo and set up your price book with you for free? If it saves
+> you time, I'd ask you to try it on 3 real jobs."
+
+**Demo flow.** Run `docs/DEMO_SCRIPT.md` (5 minutes, mock AI, no keys needed).
+
+**Build their price book WITH them** (concierge) — this is the accuracy layer and the
+wedge. Offer the $199 done-for-you setup or do it free for founding contractors.
+
+**Then have them generate 3 real quotes** for jobs they're actually quoting that week.
+
+**Questions to ask after each quote:**
+1. Would you send this to the customer as-is, or what did you change?
+2. How long would this have taken you by hand?
+3. Did the line items / scope match how you think about the job?
+4. Were the AI's risk flags / questions useful?
+5. What's missing that would make this a daily tool?
+
+**Willingness-to-pay test.** After the 3rd quote: "This is $39/mo (Starter) or $99/mo
+(Pro). Want to start now as a founding contractor?" Collect a card or a setup fee.
+**Verbal interest doesn't count — payment does.**
+
+**Success criteria (proceed):**
+- ≥ 3 of 10 pay (subscription or setup fee).
+- Majority of quotes sent with only minor edits.
+- Median time-to-quote under ~10 minutes with the price book built.
+- At least 2 contractors generate ≥ 2 quotes/week unprompted (habit).
+
+**Kill / pivot criteria:**
+- < 2 of 10 will pay after a concierge setup + 3 real quotes.
+- Contractors consistently rewrite most line prices (price book/AI not trusted).
+- "Nice but I won't change my workflow" is the dominant response.
+- Quotes aren't actually sent to customers.
+
+**Anti-goals during validation:** no scheduling, CRM, accounting sync, mobile app, or
+extra trades until electrical + HVAC are loved and paid for.

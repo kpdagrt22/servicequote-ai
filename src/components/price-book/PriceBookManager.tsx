@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PriceBookItem } from "@/lib/types/db";
-import { PRICE_BOOK_UNITS } from "@/lib/constants";
+import { PRICE_BOOK_UNITS, PRICE_BOOK_CATEGORIES } from "@/lib/constants";
 import { formatCurrency } from "@/lib/format";
 import { computeUnitPrice } from "@/lib/quotes/calculations";
 import { EmptyState } from "@/components/app/ui";
@@ -188,7 +188,12 @@ export function PriceBookManager({
         <div className="card p-5">
           <h3 className="text-base font-semibold text-gray-900">{editing.id ? "Edit item" : "New item"}</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <DraftField label="Category"><input className="input" value={editing.draft.category} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, category: e.target.value } })} /></DraftField>
+            <DraftField label="Category">
+              <input className="input" list="pb-category-options" placeholder="e.g. installation" value={editing.draft.category} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, category: e.target.value } })} />
+              <datalist id="pb-category-options">
+                {PRICE_BOOK_CATEGORIES.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </DraftField>
             <DraftField label="Name *"><input className="input" value={editing.draft.name} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, name: e.target.value } })} /></DraftField>
             <DraftField label="Unit">
               <select className="input" value={editing.draft.unit} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, unit: e.target.value } })}>
@@ -212,8 +217,8 @@ export function PriceBookManager({
       {/* Table / empty state */}
       {!hasItems ? (
         <EmptyState
-          title="Your price book is empty"
-          description="Add your common items and prices, or load examples to start fast. This is what makes your quotes accurate."
+          title="Add your common services so AI can build better quotes."
+          description="Your price book is the accuracy layer — add items and prices, or load examples to start fast."
         />
       ) : (
         <div className="card overflow-x-auto">

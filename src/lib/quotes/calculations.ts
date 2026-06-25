@@ -1,5 +1,11 @@
 import { round2 } from "@/lib/utils";
 
+// Re-export round2 so the calculation engine is a self-contained module.
+export { round2 };
+
+/** Tax above this percent is flagged as unusual (not blocked). */
+export const MAX_REASONABLE_TAX_PERCENT = 30;
+
 /**
  * Pure pricing math for quotes. No I/O, no framework — so it is trivially
  * unit-tested and identical on server and client (the editable quote screen
@@ -125,4 +131,107 @@ export function computeQuoteFromLines(
     taxPercent,
   });
   return { ...totals, lines: computed };
+}
+
+// ---------------------------------------------------------------------------
+// Named helpers (stable public API used across client + server).
+// ---------------------------------------------------------------------------
+
+/**
+ * Coerce any value to a finite number, never NaN/Infinity. Strings are parsed;
+ * blanks and garbage fall back. This is the single coercion used before math so
+ * the engine can never produce NaN or Infinity.
+ */
+export function safeNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+/** Labor cost for a unit given minutes + hourly rate (alias of `laborCost`). */
+export function computeLaborCost(laborMinutes: number, laborRate: number): number {
+  return laborCost(laborMinutes, laborRate);
+}
+
+/** Apply a markup percentage to a material/base cost (alias of `applyMarkup`). */
+export function computeMarkupPrice(materialCost: number, markupPercent: number): number {
+  return applyMarkup(materialCost, markupPercent);
+}
+
+/** True when a tax percent is outside the normal 0–30% band. */
+export function isUnusualTaxPercent(taxPercent: number): boolean {
+  const t = safeNumber(taxPercent, 0);
+  return t < 0 || t > MAX_REASONABLE_TAX_PERCENT;
+}
+
+export interface LineItemValidationResult {
+  ok: boolean;
+  errors: string[];
+  /** Normalized, finite, non-negative components ready for the calc functions. */
+  normalized: LineItemComponents & { unitPriceOverride: number | null };
+}
+
+/**
+ * Validate + normalize raw line-item input. Rejects negative numbers (no
+ * negative line items in the MVP) and anything non-finite; applies defaults
+ * (quantity 1, costs 0). Returns the normalized components so callers compute
+ * from a known-good shape. `name` is checked when provided.
+ */
+export function validateLineItemInput(input: {
+  name?: unknown;
+  quantity?: unknown;
+  materialCost?: unknown;
+  laborMinutes?: unknown;
+  laborRate?: unknown;
+  markupPercent?: unknown;
+  unitPriceOverride?: unknown;
+}): LineItemValidationResult {
+  const errors: string[] = [];
+
+  if (input.name !== undefined && String(input.name).trim() === "") {
+    errors.push("Line item name is required.");
+  }
+
+  const quantity = safeNumber(input.quantity, 1);
+  if (quantity < 0) errors.push("Quantity cannot be negative.");
+
+  const materialCost = safeNumber(input.materialCost, 0);
+  if (materialCost < 0) errors.push("Material cost cannot be negative.");
+
+  const laborMinutes = safeNumber(input.laborMinutes, 0);
+  if (laborMinutes < 0) errors.push("Labor minutes cannot be negative.");
+
+  const laborRate = safeNumber(input.laborRate, 0);
+  if (laborRate < 0) errors.push("Labor rate cannot be negative.");
+
+  const markupPercent = safeNumber(input.markupPercent, 0);
+  if (markupPercent < 0) errors.push("Markup cannot be negative.");
+
+  let unitPriceOverride: number | null = null;
+  if (
+    input.unitPriceOverride !== undefined &&
+    input.unitPriceOverride !== null &&
+    input.unitPriceOverride !== ""
+  ) {
+    const override = safeNumber(input.unitPriceOverride, NaN);
+    if (!Number.isFinite(override)) errors.push("Unit price is not a valid number.");
+    else if (override < 0) errors.push("Unit price cannot be negative.");
+    else unitPriceOverride = round2(override);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    normalized: {
+      quantity: Math.max(0, quantity),
+      materialCost: Math.max(0, materialCost),
+      laborMinutes: Math.max(0, laborMinutes),
+      laborRate: Math.max(0, laborRate),
+      markupPercent: Math.max(0, markupPercent),
+      unitPriceOverride,
+    },
+  };
 }

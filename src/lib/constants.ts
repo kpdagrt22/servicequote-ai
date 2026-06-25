@@ -51,31 +51,25 @@ export const CURRENCY_SYMBOLS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Quotes
+// Quotes — status lifecycle lives in src/lib/quotes/status.ts (single source of
+// truth); re-exported here so existing import sites keep working.
 // ---------------------------------------------------------------------------
 
-export const QUOTE_STATUSES = [
-  "draft",
-  "sent",
-  "accepted",
-  "rejected",
-] as const;
-export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
-
-export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
-  draft: "Draft",
-  sent: "Sent",
-  accepted: "Accepted",
-  rejected: "Rejected",
-};
-
-/** Allowed forward transitions for a quote's lifecycle. */
-export const QUOTE_STATUS_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
-  draft: ["sent"],
-  sent: ["accepted", "rejected", "draft"],
-  accepted: ["sent"],
-  rejected: ["sent", "draft"],
-};
+export {
+  QUOTE_STATUSES,
+  QUOTE_STATUS_LABELS,
+  QUOTE_STATUS_TRANSITIONS,
+  QUOTE_STATUS_BADGE_VARIANT,
+  EDITABLE_QUOTE_STATUSES,
+  canTransitionQuoteStatus,
+  getAllowedTransitions,
+  getQuoteStatusLabel,
+  getQuoteStatusBadgeVariant,
+  getTransitionActionLabel,
+  isQuoteEditable,
+  isQuoteStatus,
+} from "@/lib/quotes/status";
+export type { QuoteStatus, QuoteStatusBadgeVariant } from "@/lib/quotes/status";
 
 export const AI_STATUSES = [
   "pending",
@@ -90,8 +84,11 @@ export const QUOTE_EVENT_TYPES = [
   "ai_generated",
   "edited",
   "status_changed",
+  "proposal_generated",
   "pdf_generated",
+  "pdf_downloaded",
   "customer_message_copied",
+  "quote_duplicated",
 ] as const;
 export type QuoteEventType = (typeof QUOTE_EVENT_TYPES)[number];
 
@@ -112,6 +109,19 @@ export const PRICE_BOOK_UNITS = [
 
 export const PRICE_BOOK_SOURCES = ["manual", "ai", "import", "seed"] as const;
 export type PriceBookSource = (typeof PRICE_BOOK_SOURCES)[number];
+
+/** Suggested price book categories (free text is still allowed). */
+export const PRICE_BOOK_CATEGORIES = [
+  "labor",
+  "materials",
+  "installation",
+  "repair",
+  "inspection",
+  "service_call",
+  "permit",
+  "other",
+] as const;
+export type PriceBookCategory = (typeof PRICE_BOOK_CATEGORIES)[number];
 
 // ---------------------------------------------------------------------------
 // Pricing / plans
@@ -188,3 +198,15 @@ export const PRICING_NOT_GUARANTEED =
 
 export const DEFAULT_PROPOSAL_FOOTER =
   "Thank you for the opportunity to earn your business. This quote is an estimate and may change if job conditions differ from those described.";
+
+/** Shown on the quote detail page above status actions. */
+export const QUOTE_REVIEW_DISCLAIMER =
+  "Review pricing and scope before sending. ServiceQuote AI assists with estimates but does not guarantee pricing accuracy.";
+
+/** Printed on every branded proposal. */
+export const PROPOSAL_DISCLAIMER =
+  "This proposal is an estimate based on the information provided. Final pricing may change if site conditions, scope, materials, or customer requirements change. Please review and approve before work begins.";
+
+/** Shown to the user when AI draft generation fails entirely. */
+export const AI_FALLBACK_MESSAGE =
+  "We could not generate a quote draft. You can still add line items manually.";

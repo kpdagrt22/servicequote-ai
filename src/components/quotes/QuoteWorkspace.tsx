@@ -4,16 +4,19 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Quote, QuoteLineItem, Customer, PriceBookItem } from "@/lib/types/db";
 import {
-  QUOTE_STATUS_TRANSITIONS,
-  QUOTE_STATUS_LABELS,
+  getAllowedTransitions,
+  getQuoteStatusLabel,
+  getTransitionActionLabel,
+  isQuoteEditable,
   AI_ESTIMATE_DISCLAIMER,
+  QUOTE_REVIEW_DISCLAIMER,
   type QuoteStatus,
 } from "@/lib/constants";
 import { formatCurrency } from "@/lib/format";
 import { toNumber, round2 } from "@/lib/utils";
 import { computeUnitPrice, computeLineTotal, computeQuoteTotals } from "@/lib/quotes/calculations";
 import { StatusBadge } from "@/components/app/ui";
-import { saveQuoteDraft, updateQuoteStatus, recordQuoteEvent } from "@/lib/actions/quotes";
+import { saveQuoteDraft, updateQuoteStatus, recordQuoteEvent, duplicateQuote } from "@/lib/actions/quotes";
 
 interface LineDraft {
   key: string;
@@ -102,7 +105,14 @@ export function QuoteWorkspace({
   initialLineItems: QuoteLineItem[];
   priceBook: PriceBookItem[];
   org: { name: string; currency: string; defaultLaborRate: number; logoUrl: string | null };
-  aiInsights: { confidence?: number; used_fallback?: boolean; risk_flags?: string[]; questions?: string[] } | null;
+  aiInsights: {
+    confidence?: number;
+    used_fallback?: boolean;
+    risk_flags?: string[];
+    questions?: string[];
+    cannot_price_items?: string[];
+    missing_information?: string[];
+  } | null;
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -112,7 +122,7 @@ export function QuoteWorkspace({
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const editable = canEdit && status === "draft";
+  const editable = canEdit && isQuoteEditable(status);
 
   const [title, setTitle] = useState(quote.title ?? "");
   const [scope, setScope] = useState(quote.scope_summary ?? "");
@@ -257,9 +267,9 @@ export function QuoteWorkspace({
     });
   }
 
-  const customerMessage = `Hi ${customer?.name?.split(" ")[0] || "there"}, here is your quote${
-    title ? ` for ${title.toLowerCase()}` : ""
-  }. Please review the attached proposal and let me know if you have any questions. Thank you! — ${org.name}`;
+  const customerMessage = `Hi ${customer?.name || "there"}, attached is the proposal for ${
+    title || "your project"
+  }. Please review the scope, pricing, assumptions, and exclusions. Let me know if you would like any changes. — ${org.name}`;
 
   function copyMessage() {
     navigator.clipboard?.writeText(customerMessage).then(() => {
@@ -270,11 +280,24 @@ export function QuoteWorkspace({
   }
 
   function openProposal() {
-    recordQuoteEvent(quote.id, "pdf_generated");
+    recordQuoteEvent(quote.id, "proposal_generated");
     window.open(`/proposal/${quote.id}/print`, "_blank");
   }
 
-  const allowedTransitions = QUOTE_STATUS_TRANSITIONS[status] ?? [];
+  function duplicate() {
+    setError(null);
+    startTransition(async () => {
+      const res = await duplicateQuote(quote.id);
+      if (!res.ok || !res.quoteId) {
+        setError(res.error ?? "Could not duplicate the quote.");
+        return;
+      }
+      router.push(`/quotes/${res.quoteId}`);
+      router.refresh();
+    });
+  }
+
+  const allowedTransitions = getAllowedTransitions(status);
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -478,17 +501,28 @@ export function QuoteWorkspace({
         </div>
 
         {/* Status */}
-        {canEdit && allowedTransitions.length > 0 && (
+        {canEdit && (
           <div className="card p-5">
             <h2 className="text-base font-semibold text-gray-900">Status</h2>
-            <p className="mt-1 text-sm text-gray-500">Currently <strong>{QUOTE_STATUS_LABELS[status]}</strong>.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {allowedTransitions.map((s) => (
-                <button key={s} className="btn-secondary text-sm" onClick={() => changeStatus(s)} disabled={pending}>
-                  Mark as {QUOTE_STATUS_LABELS[s]}
-                </button>
-              ))}
-            </div>
+            <p className="mt-1 text-sm text-gray-500">Currently <strong>{getQuoteStatusLabel(status)}</strong>.</p>
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{QUOTE_REVIEW_DISCLAIMER}</p>
+            {allowedTransitions.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {allowedTransitions.map((s) => (
+                  <button
+                    key={s}
+                    className={s === "archived" ? "btn-ghost text-sm" : "btn-secondary text-sm"}
+                    onClick={() => changeStatus(s)}
+                    disabled={pending}
+                  >
+                    {getTransitionActionLabel(status, s)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button className="btn-ghost mt-3 w-full justify-center text-sm" onClick={duplicate} disabled={pending}>
+              Duplicate quote
+            </button>
           </div>
         )}
 
@@ -502,31 +536,60 @@ export function QuoteWorkspace({
         </div>
 
         {/* AI insights */}
-        {aiInsights && (aiInsights.risk_flags?.length || aiInsights.questions?.length) && (
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900">AI insights</h2>
-            {typeof aiInsights.confidence === "number" && (
-              <p className="mt-1 text-sm text-gray-500">Draft confidence: {Math.round(aiInsights.confidence * 100)}%</p>
-            )}
-            {aiInsights.risk_flags && aiInsights.risk_flags.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Check before sending</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                  {aiInsights.risk_flags.map((r, i) => <li key={i}>{r}</li>)}
-                </ul>
-              </div>
-            )}
-            {aiInsights.questions && aiInsights.questions.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Questions for the customer</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                  {aiInsights.questions.map((q, i) => <li key={i}>{q}</li>)}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
+        {aiInsights &&
+          (aiInsights.risk_flags?.length ||
+            aiInsights.questions?.length ||
+            aiInsights.cannot_price_items?.length ||
+            aiInsights.missing_information?.length ||
+            typeof aiInsights.confidence === "number") && (
+            <div className="card p-5">
+              <h2 className="text-base font-semibold text-gray-900">AI insights</h2>
+              {typeof aiInsights.confidence === "number" && (
+                <p className="mt-1 text-sm text-gray-500">Draft confidence: {Math.round(aiInsights.confidence * 100)}%</p>
+              )}
+              {typeof aiInsights.confidence === "number" && aiInsights.confidence < 0.5 && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Low confidence — double-check the line items and prices carefully before sending.
+                </p>
+              )}
+              {aiInsights.cannot_price_items && aiInsights.cannot_price_items.length > 0 && (
+                <InsightList title="Couldn’t price — you set these" items={aiInsights.cannot_price_items} accent="amber" />
+              )}
+              {aiInsights.risk_flags && aiInsights.risk_flags.length > 0 && (
+                <InsightList title="Check before sending" items={aiInsights.risk_flags} accent="amber" />
+              )}
+              {aiInsights.missing_information && aiInsights.missing_information.length > 0 && (
+                <InsightList title="Missing information" items={aiInsights.missing_information} accent="gray" />
+              )}
+              {aiInsights.questions && aiInsights.questions.length > 0 && (
+                <InsightList title="Questions for the customer" items={aiInsights.questions} accent="gray" />
+              )}
+            </div>
+          )}
       </div>
+    </div>
+  );
+}
+
+function InsightList({
+  title,
+  items,
+  accent,
+}: {
+  title: string;
+  items: string[];
+  accent: "amber" | "gray";
+}) {
+  return (
+    <div className="mt-3">
+      <p className={`text-xs font-semibold uppercase tracking-wide ${accent === "amber" ? "text-amber-700" : "text-gray-500"}`}>
+        {title}
+      </p>
+      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+        {items.map((it, i) => (
+          <li key={i}>{it}</li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -550,9 +613,9 @@ function ReadOnlyLineItems({ lines, currency }: { lines: LineDraft[]; currency: 
               {l.description && <div className="text-xs text-gray-400">{l.description}</div>}
             </td>
             <td className="py-2 text-right text-gray-700">{toNumber(l.quantity)} {l.unit}</td>
-            <td className="py-2 text-right text-gray-700">{formatCurrency(toNumber(l.unit_price), currency)}</td>
+            <td className="py-2 text-right text-gray-700">{formatCurrency(round2(toNumber(l.unit_price)), currency)}</td>
             <td className="py-2 text-right font-medium text-gray-900">
-              {formatCurrency(computeLineTotal(toNumber(l.unit_price), toNumber(l.quantity)), currency)}
+              {formatCurrency(computeLineTotal(round2(toNumber(l.unit_price)), toNumber(l.quantity)), currency)}
             </td>
           </tr>
         ))}

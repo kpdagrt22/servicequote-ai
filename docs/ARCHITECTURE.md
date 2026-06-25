@@ -130,3 +130,16 @@ clauses.
 
 PostHog and Sentry env vars are reserved in `.env.example`. AI failures and
 fallbacks are already persisted to `ai_extraction_logs` and surfaced in `/admin`.
+
+---
+
+## Alpha hardening additions (2026-06)
+
+New modules layered onto the existing architecture (no structural rewrite):
+
+- **`src/lib/quotes/status.ts`** — single source of truth for the quote status lifecycle: statuses (`draft/ready/sent/accepted/rejected/archived`), the transition map, `canTransitionQuoteStatus`, badge variants, and labels. `constants.ts` re-exports it so existing imports keep working. The server (`updateQuoteStatus`) and UI (`QuoteWorkspace`) both consult it; a DB `CHECK` constraint (migration `0004`) bounds the legal values.
+- **`src/lib/auth/organizations.ts`** — centralized org auth + ownership helpers (`requireOrganizationMember/OwnerOrAdmin`, `assertCustomerBelongsToOrg`, `assertQuoteBelongsToOrg`, `assertPriceBookItemBelongsToOrg`). Defense in depth alongside RLS; the org is always derived from the session, never a client-supplied id.
+- **`src/lib/quotes/proposal.ts`** — pure proposal data mapper (`buildProposalView`, `buildCustomerMessage`) consumed by the print page; unit-tested for missing fields, long descriptions, and totals.
+- **`src/lib/env.ts`** + `scripts/verify-env.mjs` — env validation (required public Supabase keys vs optional integrations) with safe warnings; never crashes the build.
+- **`src/lib/observability/events.ts`** — dependency-free product-event + error wrapper (`trackEvent`, `captureError`) with key/secret redaction; the single place to forward to PostHog/Sentry later.
+- **`src/lib/actions/demo.ts`** — auth-gated `seedDemoData` (current org only) for demos.

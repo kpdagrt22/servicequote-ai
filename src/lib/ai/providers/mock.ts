@@ -396,6 +396,13 @@ export function mockExtractQuote(req: ExtractQuoteRequest): QuoteExtraction {
       "Are materials customer-supplied or included?",
       "Is this a single visit or does it require a return trip?",
     ],
+    cannot_price_items: items
+      .filter((i) => i.suggested_material_cost == null && i.suggested_labor_minutes == null)
+      .map((i) => i.name),
+    missing_information: [
+      "Exact measurements / quantities for the work area.",
+      "Photos of the existing conditions and access.",
+    ],
     confidence: Number(avgConfidence.toFixed(2)),
   };
 

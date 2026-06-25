@@ -12,8 +12,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "db:migrate": "echo 'Run the SQL files in supabase/migrations against your Supabase project in order. See README.md.'",
-    "db:seed": "echo 'Run supabase/seed/demo.sql against your project (after migrations). See README.md.'"
+    "db:migrate": "echo 'Run the SQL files in supabase/migrations against your Supabase project in order (0001..0004). See docs/SUPABASE_SETUP.md.'",
+    "db:seed": "echo 'Run supabase/seed/demo.sql (after migrations), or use the in-app Demo data button. See docs/DEMO_SCRIPT.md.'",
+    "db:types": "echo 'Optional: supabase gen types typescript --project-id <id> --schema public > src/lib/types/supabase.ts. Types are hand-authored in src/lib/types/db.ts.'",
+    "seed:demo": "echo 'Sign in, then use the Demo data button on the dashboard, or run supabase/seed/demo.sql. See docs/DEMO_SCRIPT.md.'",
+    "verify:env": "node scripts/verify-env.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

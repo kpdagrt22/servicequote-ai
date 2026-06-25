@@ -117,3 +117,27 @@ dialog.)
 Vercel keeps immutable deployments — promote a previous deployment to roll back
 the app. Database migrations are forward-only; write a reversing SQL migration if
 you need to undo a schema change.
+
+---
+
+## Alpha hardening update (2026-06)
+
+- **Migrations now run `0001`→`0004`.** `0004_quote_status_lifecycle.sql` widens the
+  quote status CHECK constraint; apply it or status changes to `ready`/`archived`
+  will fail. Full walkthrough: `docs/SUPABASE_SETUP.md`.
+- **Verify env before/after deploy:** `npm run verify:env` (exits non-zero only when a
+  required public Supabase key is missing; warns on optional integrations).
+- **Demo data:** after deploy, sign in and click **Seed demo data** on the dashboard,
+  or run `supabase/seed/demo.sql`. See `docs/DEMO_SCRIPT.md`.
+
+### Pre-deploy checklist
+
+- [ ] `npm run typecheck` clean
+- [ ] `npm run test` green
+- [ ] `npm run build` succeeds
+- [ ] `npm run verify:env` (required keys present in the target env)
+- [ ] Supabase migrations `0001`–`0004` applied; RLS enabled on every table
+- [ ] `NEXT_PUBLIC_APP_URL` matches the real domain; `<APP_URL>/auth/callback` in Supabase redirect URLs
+- [ ] `ADMIN_EMAILS` + `SUPABASE_SERVICE_ROLE_KEY` set if you need `/admin`
+- [ ] Stripe keys + webhook configured (optional; "Billing not configured" otherwise)
+- [ ] No secrets committed (`.env*` gitignored)
