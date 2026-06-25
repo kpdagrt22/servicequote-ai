@@ -6,12 +6,14 @@ base `main` ← head `alpha-hardening-quote-lifecycle`
 
 ## 1. Is the alpha PR safe to merge?
 
-### ✅ SAFE WITH WARNINGS — merge once CI is green on the release commit.
+### ✅ SAFE WITH WARNINGS — CI is green; safe to merge now (human decision).
 
-The change is mergeable (no conflicts), all security/correctness audit categories
-pass, and the only CI failure (an e2e test-locator bug) was fixed in this branch
-without rewriting history. The warnings below are documented, expected for an
-alpha, and **non-blocking** for validation with the first contractors.
+As of commit `7cc6367`, **both CI checks pass** (`verify` ✅, `e2e` ✅) and the PR is
+`MERGEABLE` with `mergeStateStatus: CLEAN`. All security/correctness audit
+categories pass, and the only earlier CI failure (an e2e test-locator bug) was
+fixed in this branch without rewriting history. The warnings below are documented,
+expected for an alpha, and **non-blocking** for validation with the first
+contractors. This document recommends merge; it does **not** merge automatically.
 
 ## 2. Evidence
 
@@ -25,7 +27,7 @@ alpha, and **non-blocking** for validation with the first contractors.
 | Security/product audit | `docs/FINAL_SERVICEQUOTE_RELEASE_AUDIT.md` — 12/12 categories PASS, 0 blockers |
 | Prior adversarial audit | `docs/FINAL_ALPHA_AUDIT.md` — 8/8 pass, 3 issues found & fixed |
 | Manual diff review | `docs/RELEASE_PR_REVIEW.md` — 16 areas, no product/security blockers |
-| CI status (`ci.yml`) | `verify` ✅; `e2e` was ❌ (locator) → fixed; **awaiting green re-run on the release commit** |
+| CI status (`ci.yml`) on `7cc6367` | `verify` ✅ SUCCESS; `e2e` ✅ SUCCESS — **both green** |
 | Mergeability | `MERGEABLE` |
 | Secrets | None committed (`.env*` ignored; only `.env.example`) |
 

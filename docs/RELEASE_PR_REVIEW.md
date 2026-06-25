@@ -49,7 +49,8 @@ This *strengthens* the assertion (no test was weakened). Re-verified locally: fu
 e2e suite **5 passed, 1 skipped** (the authenticated flow is skipped without a test
 Supabase project — by design).
 
-CI will re-run on push of the release commit; merge only after it is green.
+**CI re-ran green on commit `7cc6367`:** `verify` ✅ SUCCESS and `e2e` ✅ SUCCESS.
+PR is `MERGEABLE` / `mergeStateStatus: CLEAN`. Safe to merge (human action).
 
 ## Diff Review Findings
 
@@ -70,7 +71,7 @@ CI will re-run on push of the release commit; merge only after it is green.
 | 13 | Admin / internal routes | PASS | `app/admin/page.tsx` | Gated by `ADMIN_EMAILS` + service role; not in this diff but unaffected. |
 | 14 | Docs | PASS | `docs/*`, `README.md` | Updated for alpha; release docs added. |
 | 15 | Tests | PASS | `tests/unit/*`, `tests/e2e/*` | 122 unit + 5 e2e passing after the locator fix. |
-| 16 | CI | WARN → PASS (after fix) | `.github/workflows/ci.yml` | e2e was red; fixed in this review; awaiting green re-run. |
+| 16 | CI | PASS | `.github/workflows/ci.yml` | e2e was red (locator); fixed; CI green on `7cc6367` (`verify` + `e2e` both SUCCESS). |
 
 **Blockers found:** 1 — CI e2e locator (fixed in this branch, not force-pushed).
 **No product/security blockers.**
