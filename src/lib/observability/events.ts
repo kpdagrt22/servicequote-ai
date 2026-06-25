@@ -16,6 +16,11 @@ export const PRODUCT_EVENTS = [
   "proposal_generated",
   "quote_status_changed",
   "pdf_downloaded",
+  "quote_sent",
+  "quote_emailed",
+  "customer_responded",
+  "invitation_sent",
+  "invitation_accepted",
 ] as const;
 export type ProductEvent = (typeof PRODUCT_EVENTS)[number];
 
@@ -41,9 +46,29 @@ export function trackEvent(event: ProductEvent, props: EventProps = {}): void {
   }
 }
 
-/** Log an error without leaking sensitive context. Sentry hook goes here later. */
+/**
+ * Log an error without leaking sensitive context. When `ERROR_WEBHOOK_URL` is
+ * set (a server-only env — Sentry tunnel, Slack/Discord webhook, or any JSON
+ * sink) the sanitized error is forwarded best-effort. The env is never exposed
+ * to the client (no NEXT_PUBLIC_ prefix), so forwarding only happens server-side.
+ */
 export function captureError(error: unknown, context: EventProps = {}): void {
   const message = error instanceof Error ? error.message : String(error);
   // eslint-disable-next-line no-console
   console.error("[error]", message, sanitize(context));
+
+  const sink = typeof process !== "undefined" ? process.env.ERROR_WEBHOOK_URL : undefined;
+  if (sink) {
+    // Fire-and-forget; never let observability break the request.
+    void fetch(sink, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        level: "error",
+        message,
+        context: sanitize(context),
+        at: new Date().toISOString(),
+      }),
+    }).catch(() => {});
+  }
 }

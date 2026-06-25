@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { stripeConfig } from "@/lib/config";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isPlanId, planForPriceId } from "@/lib/billing/plans";
+
+/** Best-effort resolve the plan id from a Stripe object's metadata or line price. */
+function resolvePlan(obj: Record<string, unknown>): string | null {
+  const metaPlan = (obj.metadata as Record<string, string> | undefined)?.plan;
+  if (isPlanId(metaPlan)) return metaPlan;
+  // Fallback: map the first subscription item's price id.
+  const items = (obj.items as { data?: Array<{ price?: { id?: string } }> } | undefined)?.data;
+  const priceId = items?.[0]?.price?.id ?? null;
+  return planForPriceId(priceId, stripeConfig.prices);
+}
 
 /**
  * Stripe webhook (placeholder-but-functional).
@@ -38,12 +49,16 @@ export async function POST(request: Request) {
   try {
     if (admin && event.type === "checkout.session.completed") {
       const orgId = (obj.client_reference_id as string | null) ?? null;
-      if (orgId) {
+      const subscriptionId = (obj.subscription as string | null) ?? null;
+      const plan = resolvePlan(obj);
+      // Only record a subscription for actual plan checkouts (not one-time setup).
+      if (orgId && (subscriptionId || isPlanId(plan))) {
         await admin.from("subscriptions").upsert(
           {
             organization_id: orgId,
             stripe_customer_id: (obj.customer as string | null) ?? null,
-            stripe_subscription_id: (obj.subscription as string | null) ?? null,
+            stripe_subscription_id: subscriptionId,
+            plan: isPlanId(plan) ? plan : null,
             status: "active",
           },
           { onConflict: "organization_id" }
@@ -55,15 +70,15 @@ export async function POST(request: Request) {
     ) {
       const subId = obj.id as string | undefined;
       if (subId) {
-        await admin
-          .from("subscriptions")
-          .update({
-            status: (obj.status as string | null) ?? null,
-            current_period_end: obj.current_period_end
-              ? new Date(Number(obj.current_period_end) * 1000).toISOString()
-              : null,
-          })
-          .eq("stripe_subscription_id", subId);
+        const plan = resolvePlan(obj);
+        const update: Record<string, unknown> = {
+          status: (obj.status as string | null) ?? null,
+          current_period_end: obj.current_period_end
+            ? new Date(Number(obj.current_period_end) * 1000).toISOString()
+            : null,
+        };
+        if (isPlanId(plan)) update.plan = plan;
+        await admin.from("subscriptions").update(update).eq("stripe_subscription_id", subId);
       }
     }
   } catch (err) {

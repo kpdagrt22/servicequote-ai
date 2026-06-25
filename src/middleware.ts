@@ -41,6 +41,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/price-book") ||
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/proposal") ||
+    pathname.startsWith("/invite") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/settings");
 

@@ -12,6 +12,9 @@ import type {
   QuoteEventType,
   PriceBookSource,
   Trade,
+  CustomerResponse,
+  InvitableRole,
+  InvitationStatus,
 } from "@/lib/constants";
 
 export interface Profile {
@@ -120,6 +123,12 @@ export interface Quote {
   currency: string;
   valid_until: string | null;
   pdf_url: string | null;
+  /** Sharing (migration 0005). */
+  share_token: string | null;
+  shared_at: string | null;
+  customer_response: CustomerResponse | null;
+  customer_responded_at: string | null;
+  customer_view_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -176,6 +185,21 @@ export interface Subscription {
   plan: string | null;
   status: string | null;
   current_period_end: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationInvitation {
+  id: string;
+  organization_id: string;
+  email: string;
+  role: InvitableRole;
+  token: string;
+  status: InvitationStatus;
+  invited_by: string | null;
+  accepted_by: string | null;
+  expires_at: string;
+  accepted_at: string | null;
   created_at: string;
   updated_at: string;
 }

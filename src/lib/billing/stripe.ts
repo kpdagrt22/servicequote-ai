@@ -60,6 +60,10 @@ export async function createCheckoutSession({ plan, email, organizationId }: Che
   form.set("allow_promotion_codes", "true");
   if (email) form.set("customer_email", email);
   if (organizationId) form.set("client_reference_id", organizationId);
+  // Stamp the plan so the webhook can record which plan the org subscribed to,
+  // on both the checkout session and (for subscriptions) the subscription object.
+  form.set("metadata[plan]", plan);
+  if (!isSetup) form.set("subscription_data[metadata][plan]", plan);
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",

@@ -108,5 +108,19 @@ test.describe("Authenticated quote flow", () => {
     await expect(proposal.getByText("QUOTE", { exact: true }).first()).toBeVisible();
     // A positive currency amount must render — proves totals were computed, not $0.00.
     await expect(proposal.getByText(/\$[1-9][\d,]*\.\d{2}/).first()).toBeVisible();
+
+    // 7. Mark the quote ready and send it — mints a public share link.
+    await page.getByRole("button", { name: "Mark ready" }).click();
+    await page.getByRole("button", { name: /Send to customer|Send & email/ }).click();
+    const shareLink = page.getByText(/\/p\//).first();
+    await expect(shareLink).toBeVisible({ timeout: 15_000 });
+    const shareUrl = (await shareLink.textContent())?.trim() ?? "";
+    expect(shareUrl).toMatch(/\/p\//);
+
+    // 8. Open the public customer proposal and accept it.
+    await page.goto(shareUrl);
+    await expect(page.getByText("QUOTE", { exact: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Accept this quote" }).click();
+    await expect(page.getByText(/You accepted this quote/i)).toBeVisible({ timeout: 15_000 });
   });
 });
