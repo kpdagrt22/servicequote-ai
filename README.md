@@ -10,6 +10,8 @@ no scheduling, no full CRM, no accounting integrations. Just faster quotes.
 > The contractor stays in control. Every AI draft is editable, and the app never
 > claims guaranteed pricing — your price book is the accuracy layer.
 
+> **Status & provenance:** Prototype built in hours with AI coding agents, directed and reviewed by [Prakash Kantumutchu (KP)](https://thisiskp.in). Never deployed as a commercial service; built to test end-to-end architecture, RLS, and deterministic fallback patterns. Verified on 23 Oct 2026: `tsc --noEmit` (0 errors) and **153 tests passing** across 19 test files (`npm test`). Case study: [thisiskp.in/work/agent-built-saas-prototypes](https://thisiskp.in/work/agent-built-saas-prototypes).
+
 ---
 
 ## Highlights
@@ -198,3 +200,9 @@ docs/                   PRD, architecture, database, AI workflow, validation, de
   QuickBooks/Xero integration in v1.
 
 See [`docs/PRD.md`](docs/PRD.md) and [`docs/VALIDATION_PLAN.md`](docs/VALIDATION_PLAN.md).
+
+---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
